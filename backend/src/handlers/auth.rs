@@ -1,11 +1,12 @@
 use salvo::prelude::*;
-use sqlx::MySqlPool;
-use crate::models::{LoginRequest, RegisterRequest, AuthResponse, User};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
+use crate::models::{LoginRequest, RegisterRequest, AuthResponse};
+use crate::entity::{users, users::Entity as Users};
 use crate::utils::{hash_password, verify_password, create_token};
 
 #[handler]
 pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
     
     let register_data = match req.parse_json::<RegisterRequest>().await {
@@ -20,13 +21,13 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
     };
 
     // Check if user already exists
-    let existing_user = sqlx::query_as::<_, User>(
-        "SELECT * FROM users WHERE email = ? OR username = ?"
-    )
-    .bind(&register_data.email)
-    .bind(&register_data.username)
-    .fetch_optional(pool)
-    .await;
+    let existing_user = Users::find()
+        .filter(
+            users::Column::Email.eq(&register_data.email)
+                .or(users::Column::Username.eq(&register_data.username))
+        )
+        .one(db)
+        .await;
 
     if let Ok(Some(_)) = existing_user {
         res.status_code(StatusCode::CONFLICT);
@@ -49,29 +50,18 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
     };
 
     // Insert user
-    let result = sqlx::query(
-        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)"
-    )
-    .bind(&register_data.username)
-    .bind(&register_data.email)
-    .bind(&password_hash)
-    .execute(pool)
-    .await;
+    let new_user = users::ActiveModel {
+        username: Set(register_data.username.clone()),
+        email: Set(register_data.email.clone()),
+        password_hash: Set(password_hash),
+        status: Set("offline".to_string()),
+        ..Default::default()
+    };
 
-    match result {
-        Ok(query_result) => {
-            let user_id = query_result.last_insert_id() as i64;
-            
-            // Fetch the created user
-            let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-                .bind(user_id)
-                .fetch_one(pool)
-                .await
-                .unwrap();
-
+    match new_user.insert(db).await {
+        Ok(user) => {
             // Generate JWT token
-            let token = create_token(user_id, jwt_secret).unwrap();
-
+            let token = create_token(user.id, jwt_secret).unwrap();
             res.render(Json(AuthResponse { token, user }));
         }
         Err(_) => {
@@ -85,7 +75,7 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
 
 #[handler]
 pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
 
     let login_data = match req.parse_json::<LoginRequest>().await {
@@ -100,9 +90,9 @@ pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     };
 
     // Find user by email
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = ?")
-        .bind(&login_data.email)
-        .fetch_optional(pool)
+    let user = Users::find()
+        .filter(users::Column::Email.eq(&login_data.email))
+        .one(db)
         .await;
 
     match user {
@@ -114,10 +104,9 @@ pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
                     let token = create_token(user.id, jwt_secret).unwrap();
 
                     // Update user status to online
-                    let _ = sqlx::query("UPDATE users SET status = 'online' WHERE id = ?")
-                        .bind(user.id)
-                        .execute(pool)
-                        .await;
+                    let mut user_active: users::ActiveModel = user.clone().into();
+                    user_active.status = Set("online".to_string());
+                    let _ = user_active.update(db).await;
 
                     res.render(Json(AuthResponse { token, user }));
                 }
@@ -140,13 +129,10 @@ pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
 
 #[handler]
 pub async fn get_current_user(res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let user_id = depot.get::<i64>("user_id").unwrap();
 
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await;
+    let user = Users::find_by_id(*user_id).one(db).await;
 
     match user {
         Ok(Some(user)) => {

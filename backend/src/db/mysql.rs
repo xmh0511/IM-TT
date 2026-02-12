@@ -1,16 +1,18 @@
-use sqlx::{MySql, Pool};
-use anyhow::Result;
+use sea_orm::{Database, DatabaseConnection, DbErr};
 
-pub type DbPool = Pool<MySql>;
+pub type DbConn = DatabaseConnection;
 
-pub async fn create_pool(database_url: &str) -> Result<DbPool> {
-    let pool = sqlx::MySqlPool::connect(database_url).await?;
-    Ok(pool)
+pub async fn create_connection(database_url: &str) -> Result<DbConn, DbErr> {
+    let db = Database::connect(database_url).await?;
+    Ok(db)
 }
 
-pub async fn run_migrations(pool: &DbPool) -> Result<()> {
+pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
+    use sea_orm::{ConnectionTrait, Statement};
+    
     // Create tables if they don't exist
-    sqlx::query(
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
         r#"
         CREATE TABLE IF NOT EXISTS users (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -24,12 +26,11 @@ pub async fn run_migrations(pool: &DbPool) -> Result<()> {
             INDEX idx_username (username),
             INDEX idx_email (email)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        "#
-    )
-    .execute(pool)
-    .await?;
+        "#.to_owned()
+    )).await?;
 
-    sqlx::query(
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
         r#"
         CREATE TABLE IF NOT EXISTS groups_table (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -42,12 +43,11 @@ pub async fn run_migrations(pool: &DbPool) -> Result<()> {
             FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
             INDEX idx_owner (owner_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        "#
-    )
-    .execute(pool)
-    .await?;
+        "#.to_owned()
+    )).await?;
 
-    sqlx::query(
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
         r#"
         CREATE TABLE IF NOT EXISTS group_members (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -61,12 +61,11 @@ pub async fn run_migrations(pool: &DbPool) -> Result<()> {
             INDEX idx_group (group_id),
             INDEX idx_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        "#
-    )
-    .execute(pool)
-    .await?;
+        "#.to_owned()
+    )).await?;
 
-    sqlx::query(
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
         r#"
         CREATE TABLE IF NOT EXISTS messages (
             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -85,10 +84,8 @@ pub async fn run_migrations(pool: &DbPool) -> Result<()> {
             INDEX idx_group (group_id),
             INDEX idx_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        "#
-    )
-    .execute(pool)
-    .await?;
+        "#.to_owned()
+    )).await?;
 
     Ok(())
 }

@@ -1,10 +1,11 @@
 use salvo::prelude::*;
-use sqlx::MySqlPool;
-use crate::models::{SendMessageRequest, Message};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait, QueryOrder};
+use crate::models::SendMessageRequest;
+use crate::entity::{messages, messages::Entity as Messages};
 
 #[handler]
 pub async fn send_message(req: &mut Request, res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let user_id = depot.get::<i64>("user_id").unwrap();
 
     let message_data = match req.parse_json::<SendMessageRequest>().await {
@@ -27,27 +28,18 @@ pub async fn send_message(req: &mut Request, res: &mut Response, depot: &mut Dep
         return;
     }
 
-    let result = sqlx::query(
-        "INSERT INTO messages (sender_id, receiver_id, group_id, content, message_type) VALUES (?, ?, ?, ?, ?)"
-    )
-    .bind(user_id)
-    .bind(message_data.receiver_id)
-    .bind(message_data.group_id)
-    .bind(&message_data.content)
-    .bind(&message_data.message_type)
-    .execute(pool)
-    .await;
+    let new_message = messages::ActiveModel {
+        sender_id: Set(*user_id),
+        receiver_id: Set(message_data.receiver_id),
+        group_id: Set(message_data.group_id),
+        content: Set(message_data.content),
+        message_type: Set(message_data.message_type),
+        is_read: Set(false),
+        ..Default::default()
+    };
 
-    match result {
-        Ok(query_result) => {
-            let message_id = query_result.last_insert_id() as i64;
-            
-            let message = sqlx::query_as::<_, Message>("SELECT * FROM messages WHERE id = ?")
-                .bind(message_id)
-                .fetch_one(pool)
-                .await
-                .unwrap();
-
+    match new_message.insert(db).await {
+        Ok(message) => {
             res.render(Json(message));
         }
         Err(_) => {
@@ -61,31 +53,33 @@ pub async fn send_message(req: &mut Request, res: &mut Response, depot: &mut Dep
 
 #[handler]
 pub async fn get_messages(req: &mut Request, res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let user_id = depot.get::<i64>("user_id").unwrap();
 
     let receiver_id: Option<i64> = req.query("receiver_id");
     let group_id: Option<i64> = req.query("group_id");
     
-    let messages = if let Some(receiver_id) = receiver_id {
+    let messages_result = if let Some(receiver_id) = receiver_id {
         // Get personal chat messages
-        sqlx::query_as::<_, Message>(
-            "SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY created_at ASC"
-        )
-        .bind(user_id)
-        .bind(receiver_id)
-        .bind(receiver_id)
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
+        Messages::find()
+            .filter(
+                messages::Column::SenderId.eq(*user_id)
+                    .and(messages::Column::ReceiverId.eq(receiver_id))
+                    .or(
+                        messages::Column::SenderId.eq(receiver_id)
+                            .and(messages::Column::ReceiverId.eq(*user_id))
+                    )
+            )
+            .order_by_asc(messages::Column::CreatedAt)
+            .all(db)
+            .await
     } else if let Some(group_id) = group_id {
         // Get group chat messages
-        sqlx::query_as::<_, Message>(
-            "SELECT * FROM messages WHERE group_id = ? ORDER BY created_at ASC"
-        )
-        .bind(group_id)
-        .fetch_all(pool)
-        .await
+        Messages::find()
+            .filter(messages::Column::GroupId.eq(group_id))
+            .order_by_asc(messages::Column::CreatedAt)
+            .all(db)
+            .await
     } else {
         res.status_code(StatusCode::BAD_REQUEST);
         res.render(Json(serde_json::json!({
@@ -94,7 +88,7 @@ pub async fn get_messages(req: &mut Request, res: &mut Response, depot: &mut Dep
         return;
     };
 
-    match messages {
+    match messages_result {
         Ok(messages) => {
             res.render(Json(messages));
         }
@@ -109,7 +103,7 @@ pub async fn get_messages(req: &mut Request, res: &mut Response, depot: &mut Dep
 
 #[handler]
 pub async fn mark_as_read(req: &mut Request, res: &mut Response, depot: &mut Depot) {
-    let pool = depot.obtain::<MySqlPool>().unwrap();
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
     let user_id = depot.get::<i64>("user_id").unwrap();
     
     let message_id: i64 = match req.param("id") {
@@ -117,24 +111,31 @@ pub async fn mark_as_read(req: &mut Request, res: &mut Response, depot: &mut Dep
         None => 0,
     };
 
-    let result = sqlx::query(
-        "UPDATE messages SET is_read = TRUE WHERE id = ? AND receiver_id = ?"
-    )
-    .bind(message_id)
-    .bind(user_id)
-    .execute(pool)
-    .await;
+    let message = Messages::find_by_id(message_id).one(db).await;
 
-    match result {
-        Ok(_) => {
-            res.render(Json(serde_json::json!({
-                "success": true
-            })));
+    match message {
+        Ok(Some(msg)) if msg.receiver_id == Some(*user_id) => {
+            let mut message_active: messages::ActiveModel = msg.into();
+            message_active.is_read = Set(true);
+            
+            match message_active.update(db).await {
+                Ok(_) => {
+                    res.render(Json(serde_json::json!({
+                        "success": true
+                    })));
+                }
+                Err(_) => {
+                    res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+                    res.render(Json(serde_json::json!({
+                        "error": "Failed to mark message as read"
+                    })));
+                }
+            }
         }
-        Err(_) => {
-            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+        _ => {
+            res.status_code(StatusCode::NOT_FOUND);
             res.render(Json(serde_json::json!({
-                "error": "Failed to mark message as read"
+                "error": "Message not found"
             })));
         }
     }

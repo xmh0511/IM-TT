@@ -3,6 +3,7 @@ mod handlers;
 mod db;
 mod utils;
 mod websocket;
+mod entity;
 
 use salvo::prelude::*;
 use salvo::cors::{Cors, CorsHandler};
@@ -59,11 +60,11 @@ async fn main() {
         .unwrap_or_else(|_| "8080".to_string());
 
     // Initialize database
-    let pool = db::create_pool(&database_url)
+    let db = db::create_connection(&database_url)
         .await
-        .expect("Failed to create database pool");
+        .expect("Failed to create database connection");
 
-    db::run_migrations(&pool)
+    db::run_migrations(&db)
         .await
         .expect("Failed to run migrations");
 
@@ -85,7 +86,7 @@ async fn main() {
     // Build router
     let router = Router::new()
         .hoop(
-            salvo::affix::insert("db", pool.clone())
+            salvo::affix::insert("db", db.clone())
                 .insert("jwt_secret", jwt_secret.clone())
                 .insert("clients", clients.clone())
         )
