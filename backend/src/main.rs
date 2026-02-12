@@ -11,6 +11,34 @@ use salvo::http::Method;
 use tracing_subscriber;
 use dotenv::dotenv;
 use std::env;
+use std::sync::Arc;
+use sea_orm::DatabaseConnection;
+use once_cell::sync::OnceCell;
+
+// Global application state
+pub static APP_STATE: OnceCell<AppState> = OnceCell::new();
+
+// Application shared state
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Arc<DatabaseConnection>,
+    pub jwt_secret: Arc<String>,
+    pub clients: websocket::Clients,
+}
+
+impl AppState {
+    pub fn global() -> &'static AppState {
+        APP_STATE.get().expect("AppState not initialized")
+    }
+}
+
+// Middleware to inject app state into depot
+#[handler]
+async fn inject_app_state(depot: &mut Depot, req: &mut Request, res: &mut Response, ctrl: &mut FlowCtrl) {
+    // Get app state from somewhere - we'll need to make it accessible
+    // For now, this is a placeholder
+    ctrl.call_next(req, depot, res).await;
+}
 
 // Middleware to verify JWT token
 #[handler]
@@ -22,25 +50,21 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
         .and_then(|v| v.strip_prefix("Bearer "));
 
     if let Some(token) = token {
-        let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
-        match utils::verify_token(token, jwt_secret) {
+        let app_state = AppState::global();
+        match utils::verify_token(token, &app_state.jwt_secret) {
             Ok(claims) => {
                 depot.insert("user_id", claims.sub);
                 ctrl.call_next(req, depot, res).await;
+                return;
             }
-            Err(_) => {
-                res.status_code(StatusCode::UNAUTHORIZED);
-                res.render(Json(serde_json::json!({
-                    "error": "Invalid or expired token"
-                })));
-            }
+            Err(_) => {}
         }
-    } else {
-        res.status_code(StatusCode::UNAUTHORIZED);
-        res.render(Json(serde_json::json!({
-            "error": "No token provided"
-        })));
     }
+    
+    res.status_code(StatusCode::UNAUTHORIZED);
+    res.render(Json(serde_json::json!({
+        "error": "Invalid or expired token"
+    })));
 }
 
 #[tokio::main]
@@ -75,6 +99,15 @@ async fn main() {
 
     // Create WebSocket clients map
     let clients = websocket::create_clients();
+
+    // Create and initialize global app state
+    let app_state = AppState {
+        db: Arc::new(db),
+        jwt_secret: Arc::new(jwt_secret),
+        clients: clients.clone(),
+    };
+    
+    APP_STATE.set(app_state).expect("Failed to set APP_STATE");
 
     // Configure CORS
     let cors_handler: CorsHandler = Cors::new()
@@ -125,11 +158,5 @@ async fn main() {
 
     tracing::info!("Server running on http://{}:{}", server_host, server_port);
     
-    // Create service with shared state injection
-    let mut service = Service::new(router);
-    service.insert("db", db);
-    service.insert("jwt_secret", jwt_secret);
-    service.insert("clients", clients);
-    
-    Server::new(acceptor).serve(service).await;
+    Server::new(acceptor).serve(router).await;
 }
