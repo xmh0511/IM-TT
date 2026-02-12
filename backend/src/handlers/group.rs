@@ -5,7 +5,7 @@ use crate::models::{CreateGroupRequest, JoinGroupRequest, Group, GroupMember};
 #[handler]
 pub async fn create_group(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let group_data = match req.parse_json::<CreateGroupRequest>().await {
         Ok(data) => data,
@@ -60,7 +60,7 @@ pub async fn create_group(req: &mut Request, res: &mut Response, depot: &mut Dep
 #[handler]
 pub async fn join_group(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let join_data = match req.parse_json::<JoinGroupRequest>().await {
         Ok(data) => data,
@@ -114,7 +114,7 @@ pub async fn join_group(req: &mut Request, res: &mut Response, depot: &mut Depot
 #[handler]
 pub async fn get_user_groups(res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let groups = sqlx::query_as::<_, Group>(
         "SELECT g.* FROM groups_table g 

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, broadcast};
 use serde::{Deserialize, Serialize};
+use futures_util::{StreamExt, SinkExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WsEvent {
@@ -27,14 +28,15 @@ pub async fn websocket_handler(
     res: &mut Response,
     depot: &mut Depot,
 ) -> Result<(), salvo::http::StatusError> {
-    let user_id = depot.obtain::<i64>().cloned();
-    let clients = depot.obtain::<Clients>().unwrap().clone();
+    let user_id = depot.get::<i64>("user_id").cloned();
+    let clients = depot.get::<Clients>("clients").cloned();
 
-    if user_id.is_none() {
+    if user_id.is_none() || clients.is_none() {
         return Err(salvo::http::StatusError::unauthorized());
     }
 
     let user_id = user_id.unwrap();
+    let clients = clients.unwrap();
 
     WebSocketUpgrade::new()
         .upgrade(req, res, move |ws| handle_socket(ws, user_id, clients))
@@ -42,7 +44,7 @@ pub async fn websocket_handler(
 }
 
 async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients) {
-    let (tx, mut rx) = broadcast::channel::<String>(100);
+    let (tx, _rx) = broadcast::channel::<String>(100);
     
     // Register client
     {
@@ -76,7 +78,7 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients) {
                             if let Some(sender) = clients_lock.get(&receiver_id) {
                                 let _ = sender.send(serde_json::to_string(&event).unwrap());
                             }
-                        } else if let Some(group_id) = event.group_id {
+                        } else if let Some(_group_id) = event.group_id {
                             // Group message - broadcast to all group members
                             // In production, you'd query the database for group members
                             // For now, we'll just echo back

@@ -5,7 +5,7 @@ use crate::models::{SendMessageRequest, Message};
 #[handler]
 pub async fn send_message(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let message_data = match req.parse_json::<SendMessageRequest>().await {
         Ok(data) => data,
@@ -62,7 +62,7 @@ pub async fn send_message(req: &mut Request, res: &mut Response, depot: &mut Dep
 #[handler]
 pub async fn get_messages(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let receiver_id: Option<i64> = req.query("receiver_id");
     let group_id: Option<i64> = req.query("group_id");
@@ -110,7 +110,7 @@ pub async fn get_messages(req: &mut Request, res: &mut Response, depot: &mut Dep
 #[handler]
 pub async fn mark_as_read(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
     
     let message_id: i64 = match req.param("id") {
         Some(id) => id.parse().unwrap_or(0),

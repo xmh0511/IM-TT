@@ -6,7 +6,7 @@ use crate::utils::{hash_password, verify_password, create_token};
 #[handler]
 pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let jwt_secret = depot.obtain::<String>().unwrap();
+    let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
     
     let register_data = match req.parse_json::<RegisterRequest>().await {
         Ok(data) => data,
@@ -86,7 +86,7 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
 #[handler]
 pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let jwt_secret = depot.obtain::<String>().unwrap();
+    let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
 
     let login_data = match req.parse_json::<LoginRequest>().await {
         Ok(data) => data,
@@ -141,7 +141,7 @@ pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
 #[handler]
 pub async fn get_current_user(res: &mut Response, depot: &mut Depot) {
     let pool = depot.obtain::<MySqlPool>().unwrap();
-    let user_id = depot.obtain::<i64>().unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
 
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ?")
         .bind(user_id)

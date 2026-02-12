@@ -6,6 +6,7 @@ mod websocket;
 
 use salvo::prelude::*;
 use salvo::cors::{Cors, CorsHandler};
+use salvo::http::Method;
 use tracing_subscriber;
 use dotenv::dotenv;
 use std::env;
@@ -20,10 +21,10 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
         .and_then(|v| v.strip_prefix("Bearer "));
 
     if let Some(token) = token {
-        let jwt_secret = depot.obtain::<String>().unwrap();
+        let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
         match utils::verify_token(token, jwt_secret) {
             Ok(claims) => {
-                depot.insert(claims.sub);
+                depot.inject("user_id", claims.sub);
                 ctrl.call_next(req, depot, res).await;
             }
             Err(_) => {
@@ -67,7 +68,7 @@ async fn main() {
         .expect("Failed to run migrations");
 
     // Initialize Redis
-    let redis_client = db::create_redis_client(&redis_url)
+    let _redis_client = db::create_redis_client(&redis_url)
         .await
         .expect("Failed to create Redis client");
 
@@ -77,16 +78,16 @@ async fn main() {
     // Configure CORS
     let cors_handler: CorsHandler = Cors::new()
         .allow_origin("*")
-        .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+        .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(vec!["Content-Type", "Authorization"])
         .into_handler();
 
     // Build router
     let router = Router::new()
         .hoop(
-            affix::inject(pool.clone())
-                .inject(jwt_secret.clone())
-                .inject(clients.clone())
+            salvo::affix::insert("db", pool.clone())
+                .insert("jwt_secret", jwt_secret.clone())
+                .insert("clients", clients.clone())
         )
         .push(
             Router::with_path("/api")
