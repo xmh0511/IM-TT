@@ -106,7 +106,7 @@ pub async fn mark_as_read(req: &mut Request, res: &mut Response, depot: &mut Dep
     let db = depot.get::<DatabaseConnection>("db").unwrap();
     let user_id = depot.get::<i64>("user_id").unwrap();
     
-    let message_id: i64 = match req.param("id") {
+    let message_id: i64 = match req.param::<String>("id") {
         Some(id) => id.parse().unwrap_or(0),
         None => 0,
     };

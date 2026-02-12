@@ -28,15 +28,15 @@ pub async fn websocket_handler(
     res: &mut Response,
     depot: &mut Depot,
 ) -> Result<(), salvo::http::StatusError> {
-    let user_id = depot.get::<i64>("user_id").cloned();
-    let clients = depot.get::<Clients>("clients").cloned();
+    let user_id = depot.get::<i64>("user_id").ok();
+    let clients = depot.get::<Clients>("clients").ok();
 
     if user_id.is_none() || clients.is_none() {
         return Err(salvo::http::StatusError::unauthorized());
     }
 
-    let user_id = user_id.unwrap();
-    let clients = clients.unwrap();
+    let user_id = *user_id.unwrap();
+    let clients = clients.unwrap().clone();
 
     WebSocketUpgrade::new()
         .upgrade(req, res, move |ws| handle_socket(ws, user_id, clients))
@@ -66,7 +66,7 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients) {
 
     // Handle incoming messages
     while let Some(Ok(msg)) = ws_rx.next().await {
-        if let Ok(text) = msg.to_str() {
+        if let Ok(text) = msg.as_str() {
             if let Ok(event) = serde_json::from_str::<WsEvent>(text) {
                 // Broadcast to relevant receivers
                 let clients_lock = clients.lock().await;

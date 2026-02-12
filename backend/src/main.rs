@@ -25,7 +25,7 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
         let jwt_secret = depot.get::<String>("jwt_secret").unwrap();
         match utils::verify_token(token, jwt_secret) {
             Ok(claims) => {
-                depot.inject("user_id", claims.sub);
+                depot.insert("user_id", claims.sub);
                 ctrl.call_next(req, depot, res).await;
             }
             Err(_) => {
@@ -82,14 +82,8 @@ async fn main() {
         .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(vec!["Content-Type", "Authorization"])
         .into_handler();
-
-    // Build router
+    
     let router = Router::new()
-        .hoop(
-            salvo::affix::insert("db", db.clone())
-                .insert("jwt_secret", jwt_secret.clone())
-                .insert("clients", clients.clone())
-        )
         .push(
             Router::with_path("/api")
                 .push(
@@ -130,5 +124,12 @@ async fn main() {
         .await;
 
     tracing::info!("Server running on http://{}:{}", server_host, server_port);
-    Server::new(acceptor).serve(router).await;
+    
+    // Create service with shared state injection
+    let mut service = Service::new(router);
+    service.insert("db", db);
+    service.insert("jwt_secret", jwt_secret);
+    service.insert("clients", clients);
+    
+    Server::new(acceptor).serve(service).await;
 }

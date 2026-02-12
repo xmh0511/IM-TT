@@ -132,7 +132,7 @@ pub async fn get_user_groups(res: &mut Response, depot: &mut Depot) {
 pub async fn get_group_members(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let db = depot.get::<DatabaseConnection>("db").unwrap();
     
-    let group_id: i64 = match req.param("id") {
+    let group_id: i64 = match req.param::<String>("id") {
         Some(id) => id.parse().unwrap_or(0),
         None => 0,
     };
