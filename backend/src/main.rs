@@ -18,6 +18,11 @@ use once_cell::sync::OnceCell;
 // Global application state
 pub static APP_STATE: OnceCell<AppState> = OnceCell::new();
 
+// Depot keys for dependency injection
+pub const DB_KEY: &str = "db";
+pub const JWT_SECRET_KEY: &str = "jwt_secret";
+pub const CLIENTS_KEY: &str = "clients";
+
 // Application shared state
 #[derive(Clone,Debug)]
 pub struct AppState {
@@ -34,10 +39,12 @@ impl AppState {
 
 // Middleware to inject app state into depot
 #[handler]
-async fn inject_app_state(depot: &mut Depot, req: &mut Request, res: &mut Response, ctrl: &mut FlowCtrl) {
-    // Get app state from somewhere - we'll need to make it accessible
-    // For now, this is a placeholder
-    ctrl.call_next(req, depot, res).await;
+async fn inject_app_state(depot: &mut Depot, _req: &mut Request, _res: &mut Response, ctrl: &mut FlowCtrl) {
+    let app_state = AppState::global();
+    depot.insert(DB_KEY, app_state.db.as_ref().clone());
+    depot.insert(JWT_SECRET_KEY, app_state.jwt_secret.as_ref().clone());
+    depot.insert(CLIENTS_KEY, app_state.clients.clone());
+    ctrl.call_next(_req, depot, _res).await;
 }
 
 // Middleware to verify JWT token
@@ -119,6 +126,7 @@ async fn main() {
     let router = Router::new()
         .push(
             Router::with_path("/api")
+                .hoop(inject_app_state)
                 .push(
                     Router::with_path("/auth")
                         .push(Router::with_path("/register").post(handlers::register))
