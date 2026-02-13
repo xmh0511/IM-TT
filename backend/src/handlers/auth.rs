@@ -51,11 +51,14 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
 
     // Insert user
     let new_user = users::ActiveModel {
+        id: sea_orm::ActiveValue::NotSet,
         username: Set(register_data.username.clone()),
         email: Set(register_data.email.clone()),
         password_hash: Set(password_hash),
+        avatar: Set(None),
         status: Set("offline".to_string()),
-        ..Default::default()
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
     };
 
     match new_user.insert(db).await {
