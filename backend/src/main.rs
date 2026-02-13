@@ -38,7 +38,7 @@ async fn inject_app_state(depot: &mut Depot, req: &mut Request, res: &mut Respon
     let app_state = AppState::global();
     depot.insert("db", app_state.db.as_ref().clone());
     depot.insert("jwt_secret", app_state.jwt_secret.as_ref().clone());
-    depot.inject(app_state.clients.clone());
+    depot.insert("clients", app_state.clients.clone());
     ctrl.call_next(req, depot, res).await;
 }
 
