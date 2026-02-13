@@ -19,7 +19,7 @@ use once_cell::sync::OnceCell;
 pub static APP_STATE: OnceCell<AppState> = OnceCell::new();
 
 // Application shared state
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub struct AppState {
     pub db: Arc<DatabaseConnection>,
     pub jwt_secret: Arc<String>,
@@ -60,7 +60,7 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
             Err(_) => {}
         }
     }
-    
+
     res.status_code(StatusCode::UNAUTHORIZED);
     res.render(Json(serde_json::json!({
         "error": "Invalid or expired token"
@@ -70,7 +70,7 @@ async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Respons
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt().init();
 
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
@@ -106,7 +106,7 @@ async fn main() {
         jwt_secret: Arc::new(jwt_secret),
         clients: clients.clone(),
     };
-    
+
     APP_STATE.set(app_state).expect("Failed to set APP_STATE");
 
     // Configure CORS
@@ -115,7 +115,7 @@ async fn main() {
         .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
         .allow_headers(vec!["Content-Type", "Authorization"])
         .into_handler();
-    
+
     let router = Router::new()
         .push(
             Router::with_path("/api")
@@ -149,14 +149,13 @@ async fn main() {
                         .hoop(auth_middleware)
                         .goal(websocket::websocket_handler)
                 )
-        )
-        .hoop(cors_handler);
+        );
 
     let acceptor = TcpListener::new(format!("{}:{}", server_host, server_port))
         .bind()
         .await;
 
     tracing::info!("Server running on http://{}:{}", server_host, server_port);
-    
-    Server::new(acceptor).serve(router).await;
+    let service = Service::new(router).hoop(cors_handler);
+    Server::new(acceptor).serve(service).await;
 }
