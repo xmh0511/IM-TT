@@ -35,8 +35,10 @@ impl AppState {
 // Middleware to inject app state into depot
 #[handler]
 async fn inject_app_state(depot: &mut Depot, req: &mut Request, res: &mut Response, ctrl: &mut FlowCtrl) {
-    // Get app state from somewhere - we'll need to make it accessible
-    // For now, this is a placeholder
+    let app_state = AppState::global();
+    depot.insert("db", app_state.db.as_ref().clone());
+    depot.insert("jwt_secret", app_state.jwt_secret.as_ref().clone());
+    depot.inject(app_state.clients.clone());
     ctrl.call_next(req, depot, res).await;
 }
 
@@ -119,6 +121,7 @@ async fn main() {
     let router = Router::new()
         .push(
             Router::with_path("/api")
+                .hoop(inject_app_state)
                 .push(
                     Router::with_path("/auth")
                         .push(Router::with_path("/register").post(handlers::register))
