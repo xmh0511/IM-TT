@@ -10,7 +10,9 @@ pub struct Model {
     pub description: Option<String>,
     pub avatar: Option<String>,
     pub owner_id: i64,
+    #[sea_orm(column_type = "Timestamp")]
     pub created_at: DateTime,
+    #[sea_orm(column_type = "Timestamp")]
     pub updated_at: DateTime,
 }
 

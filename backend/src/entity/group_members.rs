@@ -9,6 +9,7 @@ pub struct Model {
     pub group_id: i64,
     pub user_id: i64,
     pub role: String,
+    #[sea_orm(column_type = "Timestamp")]
     pub joined_at: DateTime,
 }
 
