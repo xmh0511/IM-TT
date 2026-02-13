@@ -15,9 +15,9 @@ pub struct Model {
     pub avatar: Option<String>,
     pub status: String,
     #[sea_orm(column_type = "Timestamp")]
-    pub created_at: DateTime,
+    pub created_at: Option<DateTime>,
     #[sea_orm(column_type = "Timestamp")]
-    pub updated_at: DateTime,
+    pub updated_at: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
