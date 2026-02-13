@@ -12,7 +12,7 @@ pub struct Model {
     pub content: String,
     pub message_type: String,
     #[sea_orm(column_type = "Timestamp")]
-    pub created_at: Option<DateTime>,
+    pub created_at: DateTime,
     pub is_read: bool,
 }
 
