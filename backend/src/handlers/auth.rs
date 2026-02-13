@@ -51,17 +51,29 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
 
     // Insert user
     let new_user = users::ActiveModel {
+        id: sea_orm::ActiveValue::NotSet,
         username: Set(register_data.username.clone()),
         email: Set(register_data.email.clone()),
         password_hash: Set(password_hash),
+        avatar: Set(None),
         status: Set("offline".to_string()),
-        ..Default::default()
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
     };
 
     match new_user.insert(db).await {
         Ok(user) => {
             // Generate JWT token
-            let token = create_token(user.id, jwt_secret).unwrap();
+            let token = match create_token(user.id, jwt_secret) {
+                Ok(t) => t,
+                Err(_) => {
+                    res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+                    res.render(Json(serde_json::json!({
+                        "error": "Failed to generate authentication token"
+                    })));
+                    return;
+                }
+            };
             res.render(Json(AuthResponse { token, user }));
         }
         Err(_) => {
@@ -101,7 +113,16 @@ pub async fn login(req: &mut Request, res: &mut Response, depot: &mut Depot) {
             match verify_password(&login_data.password, &user.password_hash) {
                 Ok(true) => {
                     // Generate JWT token
-                    let token = create_token(user.id, jwt_secret).unwrap();
+                    let token = match create_token(user.id, jwt_secret) {
+                        Ok(t) => t,
+                        Err(_) => {
+                            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+                            res.render(Json(serde_json::json!({
+                                "error": "Failed to generate authentication token"
+                            })));
+                            return;
+                        }
+                    };
 
                     // Update user status to online
                     let mut user_active: users::ActiveModel = user.clone().into();
