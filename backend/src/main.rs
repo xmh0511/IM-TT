@@ -158,6 +158,7 @@ async fn main() {
                         .push(Router::with_path("/create").post(handlers::create_group))
                         .push(Router::with_path("/join").post(handlers::join_group))
                         .push(Router::with_path("/list").get(handlers::get_user_groups))
+                        .push(Router::with_path("/available").get(handlers::get_available_groups))
                         .push(Router::with_path("/<id>/members").get(handlers::get_group_members))
                 )
                 .push(

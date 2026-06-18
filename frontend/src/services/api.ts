@@ -113,6 +113,10 @@ class ApiService {
     return this.request('/groups/list');
   }
 
+  async getAvailableGroups(): Promise<Group[]> {
+    return this.request('/groups/available');
+  }
+
   async getGroupMembers(groupId: number): Promise<GroupMember[]> {
     return this.request(`/groups/${groupId}/members`);
   }

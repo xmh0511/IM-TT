@@ -1,5 +1,5 @@
 use salvo::prelude::*;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait, QuerySelect};
 use crate::models::{CreateGroupRequest, JoinGroupRequest};
 use crate::entity::{groups, groups::Entity as Groups, group_members, group_members::Entity as GroupMembers};
 
@@ -177,6 +177,39 @@ pub async fn get_group_members(req: &mut Request, res: &mut Response, depot: &mu
             res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
             res.render(Json(serde_json::json!({
                 "error": "Failed to fetch group members"
+            })));
+        }
+    }
+}
+
+#[handler]
+pub async fn get_available_groups(res: &mut Response, depot: &mut Depot) {
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
+
+    // Get group IDs the user is already a member of
+    let member_group_ids: Vec<i64> = GroupMembers::find()
+        .filter(group_members::Column::UserId.eq(*user_id))
+        .all(db)
+        .await
+        .map(|members| members.into_iter().map(|m| m.group_id).collect())
+        .unwrap_or_default();
+
+    // Get all groups not in that list
+    let all_groups = Groups::find().all(db).await;
+
+    match all_groups {
+        Ok(groups) => {
+            let available: Vec<_> = groups
+                .into_iter()
+                .filter(|g| !member_group_ids.contains(&g.id))
+                .collect();
+            res.render(Json(available));
+        }
+        Err(_) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Json(serde_json::json!({
+                "error": "Failed to fetch groups"
             })));
         }
     }

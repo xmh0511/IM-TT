@@ -406,6 +406,46 @@
   border-color: #12b7f5;
 }
 
+.group-select-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.group-select-item {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.group-select-item:hover {
+  background: #f0f2f5;
+}
+
+.group-select-item .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+
+.join-btn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: #12b7f5;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.join-btn:hover {
+  background: #0ea5e0;
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;

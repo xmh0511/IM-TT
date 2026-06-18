@@ -24,7 +24,7 @@ export default function Chat({ user, onLogout }: ChatProps) {
   const [showJoinGroup, setShowJoinGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
-  const [joinGroupId, setJoinGroupId] = useState('');
+  const [availableGroups, setAvailableGroups] = useState<Group[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentChatRef = useRef<ChatTarget | null>(null);
 
@@ -176,16 +176,24 @@ export default function Chat({ user, onLogout }: ChatProps) {
     }
   };
 
-  const handleJoinGroup = async () => {
-    if (!joinGroupId.trim()) return;
+  const handleJoinGroup = async (groupId: number) => {
     try {
-      await apiService.joinGroup(parseInt(joinGroupId));
+      await apiService.joinGroup(groupId);
       setShowJoinGroup(false);
-      setJoinGroupId('');
       loadData();
     } catch (error: any) {
       alert(error.message || 'Failed to join group');
     }
+  };
+
+  const openJoinGroup = async () => {
+    try {
+      const groups = await apiService.getAvailableGroups();
+      setAvailableGroups(groups);
+    } catch {
+      setAvailableGroups([]);
+    }
+    setShowJoinGroup(true);
   };
 
   const handleLogout = async () => {
@@ -264,7 +272,7 @@ export default function Chat({ user, onLogout }: ChatProps) {
                 <span>我的群组 ({groups.length})</span>
                 <div className="list-actions">
                   <button className="action-btn" onClick={() => setShowCreateGroup(true)} title="创建群组">+</button>
-                  <button className="action-btn" onClick={() => setShowJoinGroup(true)} title="加入群组">入</button>
+                  <button className="action-btn" onClick={openJoinGroup} title="加入群组">入</button>
                 </div>
               </div>
               {groups.map(group => {
@@ -372,15 +380,28 @@ export default function Chat({ user, onLogout }: ChatProps) {
         <div className="modal-overlay" onClick={() => setShowJoinGroup(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h3>加入群组</h3>
-            <input
-              type="text"
-              placeholder="输入群组 ID"
-              value={joinGroupId}
-              onChange={e => setJoinGroupId(e.target.value)}
-            />
+            {availableGroups.length === 0 ? (
+              <div className="empty-hint">没有可加入的群组</div>
+            ) : (
+              <div className="group-select-list">
+                {availableGroups.map(group => (
+                  <div
+                    key={group.id}
+                    className="group-select-item"
+                    onClick={() => handleJoinGroup(group.id)}
+                  >
+                    <div className="avatar">{group.name.charAt(0).toUpperCase()}</div>
+                    <div className="item-info">
+                      <span className="item-name">{group.name}</span>
+                      <span className="item-status">{group.description || '暂无描述'}</span>
+                    </div>
+                    <button className="join-btn">加入</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => setShowJoinGroup(false)}>取消</button>
-              <button className="confirm-btn" onClick={handleJoinGroup}>加入</button>
+              <button className="cancel-btn" onClick={() => setShowJoinGroup(false)}>关闭</button>
             </div>
           </div>
         </div>
