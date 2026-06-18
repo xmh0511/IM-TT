@@ -2,7 +2,7 @@ use salvo::prelude::*;
 use salvo::websocket::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, mpsc};
 use serde::{Deserialize, Serialize};
 use futures_util::{StreamExt, SinkExt};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
@@ -18,7 +18,7 @@ pub struct WsEvent {
     pub data: Option<serde_json::Value>,
 }
 
-pub type Clients = Arc<Mutex<HashMap<i64, broadcast::Sender<String>>>>;
+pub type Clients = Arc<Mutex<HashMap<i64, mpsc::UnboundedSender<String>>>>;
 
 pub fn create_clients() -> Clients {
     Arc::new(Mutex::new(HashMap::new()))
@@ -42,17 +42,21 @@ pub async fn websocket_handler(
     let clients = clients.unwrap().clone();
     let db = db.unwrap();
 
+    tracing::info!("WS upgrade request from user {}", user_id);
+
     WebSocketUpgrade::new()
         .upgrade(req, res, move |ws| handle_socket(ws, user_id, clients, db))
         .await
 }
 
 async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: DatabaseConnection) {
-    let (tx, _rx) = broadcast::channel::<String>(100);
+    tracing::info!("WS connected: user {}", user_id);
+
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
     {
         let mut clients_lock = clients.lock().await;
-        clients_lock.insert(user_id, tx.clone());
+        clients_lock.insert(user_id, tx);
     }
 
     // Broadcast online status
@@ -73,66 +77,84 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
         }
     }
 
-    let (mut ws_tx, mut ws_rx) = ws.split();
+    let (mut sink, mut stream) = ws.split();
 
-    let mut rx_clone = tx.subscribe();
-    let send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx_clone.recv().await {
-            if ws_tx.send(WsMessage::text(msg)).await.is_err() {
-                break;
-            }
-        }
-    });
+    loop {
+        tokio::select! {
+            ws_msg = stream.next() => {
+                match ws_msg {
+                    Some(Ok(msg)) => {
+                        if msg.is_text() {
+                            if let Ok(text) = msg.as_str() {
+                                if let Ok(event) = serde_json::from_str::<WsEvent>(text) {
+                                    tracing::debug!("WS event from {}: {}", user_id, event.event_type);
+                                    match event.event_type.as_str() {
+                                        "message" => {
+                                            if let Some(content) = &event.content {
+                                                let _ = save_message(
+                                                    &db, user_id, event.receiver_id, event.group_id,
+                                                    content, "text",
+                                                ).await;
+                                            }
 
-    while let Some(Ok(msg)) = ws_rx.next().await {
-        if let Ok(text) = msg.as_str() {
-            if let Ok(event) = serde_json::from_str::<WsEvent>(text) {
-                match event.event_type.as_str() {
-                    "message" => {
-                        if let Some(content) = &event.content {
-                            let _ = save_message(
-                                &db,
-                                user_id,
-                                event.receiver_id,
-                                event.group_id,
-                                content,
-                                "text",
-                            ).await;
-                        }
-
-                        let clients_lock = clients.lock().await;
-
-                        if let Some(receiver_id) = event.receiver_id {
-                            if let Some(sender) = clients_lock.get(&receiver_id) {
-                                let _ = sender.send(serde_json::to_string(&event).unwrap());
-                            }
-                        } else if let Some(group_id) = event.group_id {
-                            let members = GroupMembers::find()
-                                .filter(group_members::Column::GroupId.eq(group_id))
-                                .all(&db)
-                                .await;
-
-                            if let Ok(members) = members {
-                                for member in members {
-                                    if member.user_id != user_id {
-                                        if let Some(sender) = clients_lock.get(&member.user_id) {
-                                            let _ = sender.send(serde_json::to_string(&event).unwrap());
+                                            let clients_lock = clients.lock().await;
+                                            if let Some(receiver_id) = event.receiver_id {
+                                                if let Some(sender) = clients_lock.get(&receiver_id) {
+                                                    let _ = sender.send(serde_json::to_string(&event).unwrap());
+                                                }
+                                            } else if let Some(group_id) = event.group_id {
+                                                if let Ok(members) = GroupMembers::find()
+                                                    .filter(group_members::Column::GroupId.eq(group_id))
+                                                    .all(&db).await
+                                                {
+                                                    for member in members {
+                                                        if member.user_id != user_id {
+                                                            if let Some(sender) = clients_lock.get(&member.user_id) {
+                                                                let _ = sender.send(serde_json::to_string(&event).unwrap());
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
+                                        "typing" => {
+                                            if let Some(receiver_id) = event.receiver_id {
+                                                let clients_lock = clients.lock().await;
+                                                if let Some(sender) = clients_lock.get(&receiver_id) {
+                                                    let _ = sender.send(serde_json::to_string(&event).unwrap());
+                                                }
+                                            }
+                                        }
+                                        _ => {}
                                     }
                                 }
                             }
+                        } else if msg.is_ping() {
+                            let _ = sink.send(WsMessage::pong(msg.as_bytes().to_vec())).await;
+                        } else if msg.is_close() {
+                            tracing::info!("WS close from user {}", user_id);
+                            break;
                         }
                     }
-                    "typing" => {
-                        if let Some(receiver_id) = event.receiver_id {
-                            let clients_lock = clients.lock().await;
-                            if let Some(sender) = clients_lock.get(&receiver_id) {
-                                let _ = sender.send(serde_json::to_string(&event).unwrap());
-                            }
-                        }
+                    Some(Err(e)) => {
+                        tracing::error!("WS error for user {}: {:?}", user_id, e);
+                        break;
                     }
-                    _ => {}
+                    None => {
+                        tracing::info!("WS stream ended for user {}", user_id);
+                        break;
+                    }
                 }
+            }
+            Some(msg) = rx.recv() => {
+                if let Err(e) = sink.send(WsMessage::text(msg)).await {
+                    tracing::error!("Failed to send to user {}: {:?}", user_id, e);
+                    break;
+                }
+            }
+            else => {
+                tracing::info!("Both channels closed for user {}", user_id);
+                break;
             }
         }
     }
@@ -155,9 +177,9 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
         }
     }
 
-    send_task.abort();
     let mut clients_lock = clients.lock().await;
     clients_lock.remove(&user_id);
+    tracing::info!("WS cleanup done for user {}", user_id);
 }
 
 async fn save_message(
