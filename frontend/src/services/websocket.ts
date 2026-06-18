@@ -1,6 +1,6 @@
 import { WsEvent } from '../types';
 
-const WS_URL = 'ws://localhost:8080/api/ws';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/api/ws';
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
