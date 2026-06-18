@@ -30,7 +30,7 @@ function App() {
   const handleLogin = (userData: User) => {
     setUser(userData);
     const token = apiService.getToken();
-    if (token) {
+    if (token && !wsService.isConnected()) {
       wsService.connect(token);
     }
   };

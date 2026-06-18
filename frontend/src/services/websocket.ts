@@ -7,10 +7,21 @@ export class WebSocketService {
   private listeners: Array<(event: WsEvent) => void> = [];
   private onlineUsers: Set<number> = new Set();
   private onlineListeners: Array<(users: Set<number>) => void> = [];
+  private intentionalClose = false;
+  private token: string = '';
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(token: string) {
-    if (this.ws) {
-      this.ws.close();
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    this.token = token;
+    this.intentionalClose = false;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
 
     this.ws = new WebSocket(`${WS_URL}?token=${token}`);
@@ -41,7 +52,13 @@ export class WebSocketService {
       console.log('WebSocket disconnected');
       this.onlineUsers.clear();
       this.notifyOnlineUsers();
-      setTimeout(() => this.connect(token), 3000);
+      this.ws = null;
+
+      if (!this.intentionalClose && this.token) {
+        this.reconnectTimer = setTimeout(() => {
+          this.connect(this.token);
+        }, 3000);
+      }
     };
 
     this.ws.onerror = (error) => {
@@ -50,6 +67,13 @@ export class WebSocketService {
   }
 
   disconnect() {
+    this.intentionalClose = true;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -85,6 +109,10 @@ export class WebSocketService {
 
   private notifyOnlineUsers() {
     this.onlineListeners.forEach(listener => listener(new Set(this.onlineUsers)));
+  }
+
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 }
 
