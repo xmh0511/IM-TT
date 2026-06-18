@@ -311,6 +311,7 @@ export default function Chat({ user, onLogout }: ChatProps) {
                   {currentChat.type === 'group' ? '群聊' : (getContactStatus(currentChat.id) ? '在线' : '离线')}
                 </span>
               </div>
+              <button className="close-chat-btn" onClick={() => setCurrentChat(null)} title="关闭聊天">✕</button>
             </div>
 
             <div className="messages-list">

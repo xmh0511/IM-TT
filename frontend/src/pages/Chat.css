@@ -239,6 +239,27 @@
   color: #999;
 }
 
+.close-chat-btn {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: #999;
+  border: none;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.close-chat-btn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
 .messages-list {
   flex: 1;
   padding: 20px;
