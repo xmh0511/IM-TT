@@ -50,15 +50,21 @@ async fn inject_app_state(depot: &mut Depot, _req: &mut Request, _res: &mut Resp
 // Middleware to verify JWT token
 #[handler]
 async fn auth_middleware(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-    let token = req
+    // Try Authorization header first, then query parameter (for WebSocket)
+    let token_from_header = req
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|s| s.to_string());
+
+    let token_from_query = req.query::<String>("token");
+
+    let token = token_from_header.or(token_from_query);
 
     if let Some(token) = token {
         let app_state = AppState::global();
-        match utils::verify_token(token, &app_state.jwt_secret) {
+        match utils::verify_token(&token, &app_state.jwt_secret) {
             Ok(claims) => {
                 depot.insert("user_id", claims.sub);
                 ctrl.call_next(req, depot, res).await;
