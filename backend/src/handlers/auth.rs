@@ -5,6 +5,48 @@ use crate::entity::{users, users::Entity as Users};
 use crate::utils::{hash_password, verify_password, create_token};
 
 #[handler]
+pub async fn get_all_users(res: &mut Response, depot: &mut Depot) {
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
+
+    let users_list = Users::find()
+        .filter(users::Column::Id.ne(*user_id))
+        .all(db)
+        .await;
+
+    match users_list {
+        Ok(users) => {
+            res.render(Json(users));
+        }
+        Err(_) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Json(serde_json::json!({
+                "error": "Failed to fetch users"
+            })));
+        }
+    }
+}
+
+#[handler]
+pub async fn logout(res: &mut Response, depot: &mut Depot) {
+    let db = depot.get::<DatabaseConnection>("db").unwrap();
+    let user_id = depot.get::<i64>("user_id").unwrap();
+
+    let user = Users::find_by_id(*user_id).one(db).await;
+
+    if let Ok(Some(user)) = user {
+        let mut user_active: users::ActiveModel = user.into();
+        user_active.status = Set("offline".to_string());
+        let _ = user_active.update(db).await;
+    }
+
+    res.render(Json(serde_json::json!({
+        "success": true,
+        "message": "Logged out successfully"
+    })));
+}
+
+#[handler]
 pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) {
     let db = depot.get::<DatabaseConnection>("db").unwrap();
     let jwt_secret = depot.get::<String>("jwt_secret").unwrap();

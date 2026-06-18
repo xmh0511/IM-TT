@@ -131,11 +131,13 @@ async fn main() {
                     Router::with_path("/auth")
                         .push(Router::with_path("/register").post(handlers::register))
                         .push(Router::with_path("/login").post(handlers::login))
+                        .push(Router::with_path("/logout").hoop(auth_middleware).post(handlers::logout))
                 )
                 .push(
                     Router::with_path("/user")
                         .hoop(auth_middleware)
                         .push(Router::with_path("/me").get(handlers::get_current_user))
+                        .push(Router::with_path("/list").get(handlers::get_all_users))
                 )
                 .push(
                     Router::with_path("/messages")

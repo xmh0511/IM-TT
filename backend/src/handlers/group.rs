@@ -67,10 +67,37 @@ pub async fn join_group(req: &mut Request, res: &mut Response, depot: &mut Depot
     // Check if group exists
     let group_exists = Groups::find_by_id(join_data.group_id).one(db).await;
 
-    if group_exists.is_err() || group_exists.unwrap().is_none() {
-        res.status_code(StatusCode::NOT_FOUND);
+    match group_exists {
+        Ok(None) => {
+            res.status_code(StatusCode::NOT_FOUND);
+            res.render(Json(serde_json::json!({
+                "error": "Group not found"
+            })));
+            return;
+        }
+        Err(_) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Json(serde_json::json!({
+                "error": "Failed to check group"
+            })));
+            return;
+        }
+        _ => {}
+    }
+
+    // Check if already a member
+    let existing_member = GroupMembers::find()
+        .filter(
+            group_members::Column::GroupId.eq(join_data.group_id)
+                .and(group_members::Column::UserId.eq(*user_id))
+        )
+        .one(db)
+        .await;
+
+    if let Ok(Some(_)) = existing_member {
+        res.status_code(StatusCode::CONFLICT);
         res.render(Json(serde_json::json!({
-            "error": "Group not found"
+            "error": "Already a member of this group"
         })));
         return;
     }

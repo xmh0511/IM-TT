@@ -3,57 +3,66 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
 }
 
 .login-box {
-  background: white;
+  background: #fff;
   padding: 40px;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   width: 100%;
   max-width: 400px;
 }
 
 .login-box h1 {
   text-align: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   color: #333;
+  font-size: 24px;
 }
 
 .login-box h2 {
   text-align: center;
   margin-bottom: 30px;
-  color: #666;
+  color: #999;
   font-weight: normal;
+  font-size: 16px;
 }
 
 .login-box form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 16px;
 }
 
 .login-box input {
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid #ddd;
-  border-radius: 5px;
+  border-radius: 8px;
   font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.login-box input:focus {
+  border-color: #12b7f5;
 }
 
 .login-box button[type="submit"] {
   padding: 12px;
-  background: #667eea;
+  background: linear-gradient(135deg, #12b7f5 0%, #0ea5e0 100%);
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   font-size: 16px;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: all 0.3s;
+  margin-top: 4px;
 }
 
 .login-box button[type="submit"]:hover {
-  background: #5568d3;
+  background: linear-gradient(135deg, #0ea5e0 0%, #0284c7 100%);
 }
 
 .login-box button[type="submit"]:disabled {
@@ -62,22 +71,31 @@
 }
 
 .login-box .error {
-  color: #f44336;
+  color: #ff4d4f;
   text-align: center;
   font-size: 14px;
+  padding: 8px;
+  background: #fff2f0;
+  border-radius: 6px;
 }
 
 .login-box p {
   text-align: center;
   margin-top: 20px;
   color: #666;
+  font-size: 14px;
 }
 
 .link-button {
   background: none;
   border: none;
-  color: #667eea;
+  color: #12b7f5;
   cursor: pointer;
   text-decoration: underline;
-  margin-left: 5px;
+  margin-left: 4px;
+  font-size: 14px;
+}
+
+.link-button:hover {
+  color: #0ea5e0;
 }

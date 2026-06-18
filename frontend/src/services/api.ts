@@ -63,8 +63,17 @@ class ApiService {
     return data;
   }
 
+  async logout(): Promise<void> {
+    await this.request('/auth/logout', { method: 'POST' });
+    this.clearToken();
+  }
+
   async getCurrentUser(): Promise<User> {
     return this.request('/user/me');
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return this.request('/user/list');
   }
 
   async sendMessage(receiverId: number | null, groupId: number | null, content: string): Promise<Message> {
@@ -90,6 +99,13 @@ class ApiService {
     return this.request('/groups/create', {
       method: 'POST',
       body: JSON.stringify({ name, description }),
+    });
+  }
+
+  async joinGroup(groupId: number): Promise<any> {
+    return this.request('/groups/join', {
+      method: 'POST',
+      body: JSON.stringify({ group_id: groupId }),
     });
   }
 
