@@ -12,7 +12,6 @@ pub struct Model {
     pub owner_id: i64,
     #[sea_orm(column_type = "Timestamp")]
     pub created_at: Option<DateTime>,
-    #[sea_orm(column_type = "Timestamp")]
     pub updated_at: Option<DateTime>,
 }
 

@@ -118,7 +118,8 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
             };
             res.render(Json(AuthResponse { token, user }));
         }
-        Err(_) => {
+        Err(e) => {
+            tracing::error!("Failed to create user: {:?}", e);
             res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
             res.render(Json(serde_json::json!({
                 "error": "Failed to create user"
