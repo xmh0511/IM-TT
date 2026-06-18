@@ -1,5 +1,4 @@
 -- IM-TT Database Schema
--- MySQL 8.0+
 
 CREATE DATABASE IF NOT EXISTS im_tt CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE im_tt;
@@ -13,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar VARCHAR(255),
     status VARCHAR(20) DEFAULT 'offline',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT NULL,
     INDEX idx_username (username),
     INDEX idx_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -26,7 +25,7 @@ CREATE TABLE IF NOT EXISTS groups_table (
     avatar VARCHAR(255),
     owner_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT NULL,
     FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_owner (owner_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
