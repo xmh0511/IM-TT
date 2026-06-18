@@ -59,8 +59,28 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
         clients_lock.insert(user_id, tx);
     }
 
-    // Broadcast online status
+    // Send currently online users to this user, and broadcast this user's online status
     {
+        let clients_lock = clients.lock().await;
+
+        // Tell this user who is already online (send to this user's channel)
+        if let Some(my_sender) = clients_lock.get(&user_id) {
+            for (uid, _) in clients_lock.iter() {
+                if *uid != user_id {
+                    let online_event = WsEvent {
+                        event_type: "online".to_string(),
+                        user_id: *uid,
+                        receiver_id: None,
+                        group_id: None,
+                        content: None,
+                        data: None,
+                    };
+                    let _ = my_sender.send(serde_json::to_string(&online_event).unwrap());
+                }
+            }
+        }
+
+        // Tell other users this user is now online
         let online_event = WsEvent {
             event_type: "online".to_string(),
             user_id,
@@ -69,7 +89,6 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
             content: None,
             data: None,
         };
-        let clients_lock = clients.lock().await;
         for (uid, sender) in clients_lock.iter() {
             if *uid != user_id {
                 let _ = sender.send(serde_json::to_string(&online_event).unwrap());
