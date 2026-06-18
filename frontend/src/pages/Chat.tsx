@@ -19,12 +19,18 @@ export default function Chat({ user, onLogout }: ChatProps) {
   const [messageInput, setMessageInput] = useState('');
   const [activeTab, setActiveTab] = useState<'contacts' | 'groups'>('contacts');
   const [onlineUsers, setOnlineUsers] = useState<Set<number>>(new Set());
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showJoinGroup, setShowJoinGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [joinGroupId, setJoinGroupId] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentChatRef = useRef<ChatTarget | null>(null);
+
+  useEffect(() => {
+    currentChatRef.current = currentChat;
+  }, [currentChat]);
 
   const loadData = useCallback(async () => {
     try {
@@ -44,16 +50,41 @@ export default function Chat({ user, onLogout }: ChatProps) {
 
     const handleWsMessage = (event: any) => {
       if (event.event_type === 'message') {
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender_id: event.user_id,
-          receiver_id: event.receiver_id,
-          group_id: event.group_id,
-          content: event.content,
-          message_type: 'text',
-          created_at: new Date().toISOString(),
-          is_read: false,
-        }]);
+        const senderId = event.user_id;
+        const receiverId = event.receiver_id;
+        const groupId = event.group_id;
+
+        // Skip if this is our own message
+        if (senderId === user.id) return;
+
+        const chat = currentChatRef.current;
+
+        // Check if the message is for the currently open chat
+        const isCurrentChat =
+          (chat?.type === 'contact' && senderId === chat.id && receiverId === user.id) ||
+          (chat?.type === 'group' && groupId === chat.id);
+
+        if (isCurrentChat) {
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            sender_id: senderId,
+            receiver_id: receiverId,
+            group_id: groupId,
+            content: event.content,
+            message_type: 'text',
+            created_at: new Date().toISOString(),
+            is_read: false,
+          }]);
+        } else {
+          // Increment unread count
+          if (groupId) {
+            const key = `group_${groupId}`;
+            setUnreadCounts(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+          } else if (receiverId === user.id) {
+            const key = `contact_${senderId}`;
+            setUnreadCounts(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+          }
+        }
       }
     };
 
@@ -68,7 +99,7 @@ export default function Chat({ user, onLogout }: ChatProps) {
       wsService.removeListener(handleWsMessage);
       wsService.removeOnlineListener(handleOnlineUsers);
     };
-  }, [loadData]);
+  }, [loadData, user.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,6 +119,14 @@ export default function Chat({ user, onLogout }: ChatProps) {
   const handleSelectChat = (type: 'contact' | 'group', id: number, name: string) => {
     setCurrentChat({ type, id, name });
     loadMessages(type, id);
+
+    // Clear unread count for this chat
+    const key = `${type}_${id}`;
+    setUnreadCounts(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleSendMessage = async () => {
@@ -193,22 +232,26 @@ export default function Chat({ user, onLogout }: ChatProps) {
               <div className="list-header">
                 <span>好友列表 ({contacts.length})</span>
               </div>
-              {contacts.map(contact => (
-                <div
-                  key={contact.id}
-                  className={`chat-item ${currentChat?.id === contact.id && currentChat?.type === 'contact' ? 'active' : ''}`}
-                  onClick={() => handleSelectChat('contact', contact.id, contact.username)}
-                >
-                  <div className="avatar-wrapper">
-                    <div className="avatar">{contact.username.charAt(0).toUpperCase()}</div>
-                    <span className={`status-dot ${getContactStatus(contact.id) ? 'online' : ''}`}></span>
+              {contacts.map(contact => {
+                const count = unreadCounts[`contact_${contact.id}`] || 0;
+                return (
+                  <div
+                    key={contact.id}
+                    className={`chat-item ${currentChat?.id === contact.id && currentChat?.type === 'contact' ? 'active' : ''}`}
+                    onClick={() => handleSelectChat('contact', contact.id, contact.username)}
+                  >
+                    <div className="avatar-wrapper">
+                      <div className="avatar">{contact.username.charAt(0).toUpperCase()}</div>
+                      <span className={`status-dot ${getContactStatus(contact.id) ? 'online' : ''}`}></span>
+                    </div>
+                    <div className="item-info">
+                      <span className="item-name">{contact.username}</span>
+                      <span className="item-status">{getContactStatus(contact.id) ? '在线' : '离线'}</span>
+                    </div>
+                    {count > 0 && <span className="unread-badge">{count > 99 ? '99+' : count}</span>}
                   </div>
-                  <div className="item-info">
-                    <span className="item-name">{contact.username}</span>
-                    <span className="item-status">{getContactStatus(contact.id) ? '在线' : '离线'}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {contacts.length === 0 && (
                 <div className="empty-hint">暂无联系人</div>
               )}
@@ -224,19 +267,23 @@ export default function Chat({ user, onLogout }: ChatProps) {
                   <button className="action-btn" onClick={() => setShowJoinGroup(true)} title="加入群组">入</button>
                 </div>
               </div>
-              {groups.map(group => (
-                <div
-                  key={group.id}
-                  className={`chat-item ${currentChat?.id === group.id && currentChat?.type === 'group' ? 'active' : ''}`}
-                  onClick={() => handleSelectChat('group', group.id, group.name)}
-                >
-                  <div className="avatar">{group.name.charAt(0).toUpperCase()}</div>
-                  <div className="item-info">
-                    <span className="item-name">{group.name}</span>
-                    <span className="item-status">{group.description || '暂无描述'}</span>
+              {groups.map(group => {
+                const count = unreadCounts[`group_${group.id}`] || 0;
+                return (
+                  <div
+                    key={group.id}
+                    className={`chat-item ${currentChat?.id === group.id && currentChat?.type === 'group' ? 'active' : ''}`}
+                    onClick={() => handleSelectChat('group', group.id, group.name)}
+                  >
+                    <div className="avatar">{group.name.charAt(0).toUpperCase()}</div>
+                    <div className="item-info">
+                      <span className="item-name">{group.name}</span>
+                      <span className="item-status">{group.description || '暂无描述'}</span>
+                    </div>
+                    {count > 0 && <span className="unread-badge">{count > 99 ? '99+' : count}</span>}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {groups.length === 0 && (
                 <div className="empty-hint">暂无群组，点击 + 创建或入 加入</div>
               )}
