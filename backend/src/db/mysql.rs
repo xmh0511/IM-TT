@@ -10,7 +10,6 @@ pub async fn create_connection(database_url: &str) -> Result<DbConn, DbErr> {
 pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
     use sea_orm::{ConnectionTrait, Statement};
     
-    // Create tables if they don't exist
     db.execute(Statement::from_string(
         db.get_database_backend(),
         r#"
@@ -21,7 +20,7 @@ pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
             password_hash VARCHAR(255) NOT NULL,
             avatar VARCHAR(255),
             status VARCHAR(20) DEFAULT 'offline',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT NULL,
             updated_at DATETIME DEFAULT NULL,
             INDEX idx_username (username),
             INDEX idx_email (email)
@@ -38,7 +37,7 @@ pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
             description TEXT,
             avatar VARCHAR(255),
             owner_id BIGINT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT NULL,
             updated_at DATETIME DEFAULT NULL,
             FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
             INDEX idx_owner (owner_id)
@@ -54,7 +53,7 @@ pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
             group_id BIGINT NOT NULL,
             user_id BIGINT NOT NULL,
             role VARCHAR(20) DEFAULT 'member',
-            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            joined_at DATETIME DEFAULT NULL,
             FOREIGN KEY (group_id) REFERENCES groups_table(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             UNIQUE KEY unique_member (group_id, user_id),
@@ -74,7 +73,7 @@ pub async fn run_migrations(db: &DbConn) -> Result<(), DbErr> {
             group_id BIGINT,
             content TEXT NOT NULL,
             message_type VARCHAR(20) DEFAULT 'text',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT NULL,
             is_read BOOLEAN DEFAULT FALSE,
             FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,

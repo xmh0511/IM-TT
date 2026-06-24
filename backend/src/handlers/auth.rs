@@ -92,6 +92,7 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
     };
 
     // Insert user
+    let now = chrono::Utc::now().naive_utc();
     let new_user = users::ActiveModel {
         id: sea_orm::ActiveValue::NotSet,
         username: Set(register_data.username.clone()),
@@ -99,8 +100,8 @@ pub async fn register(req: &mut Request, res: &mut Response, depot: &mut Depot) 
         password_hash: Set(password_hash),
         avatar: Set(None),
         status: Set("offline".to_string()),
-        created_at: sea_orm::ActiveValue::NotSet,
-        updated_at: sea_orm::ActiveValue::NotSet,
+        created_at: Set(Some(now)),
+        updated_at: Set(None),
     };
 
     match new_user.insert(db).await {
