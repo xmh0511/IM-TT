@@ -52,17 +52,6 @@ pub async fn websocket_handler(
 async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: DatabaseConnection) {
     tracing::info!("WS connected: user {}", user_id);
 
-    // Set user status to online in database
-    {
-        use sea_orm::{EntityTrait, Set, ActiveModelTrait};
-        use crate::entity::{users, users::Entity as Users};
-        if let Ok(Some(user)) = Users::find_by_id(user_id).one(&db).await {
-            let mut active: users::ActiveModel = user.into();
-            active.status = Set("online".to_string());
-            let _ = active.update(&db).await;
-        }
-    }
-
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
     {
@@ -204,17 +193,6 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
             if *uid != user_id {
                 let _ = sender.send(serde_json::to_string(&offline_event).unwrap());
             }
-        }
-    }
-
-    // Set user status to offline in database
-    {
-        use sea_orm::{EntityTrait, Set, ActiveModelTrait};
-        use crate::entity::{users, users::Entity as Users};
-        if let Ok(Some(user)) = Users::find_by_id(user_id).one(&db).await {
-            let mut active: users::ActiveModel = user.into();
-            active.status = Set("offline".to_string());
-            let _ = active.update(&db).await;
         }
     }
 
