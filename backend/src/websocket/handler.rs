@@ -61,49 +61,36 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
 
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
-    // Register this connection and check if it's the first for this user
-    let is_first_connection = {
+    // Register connection and broadcast online — all under one lock
+    {
         let mut clients_lock = clients.lock().await;
-        let first = !clients_lock.values().any(|e| e.user_id == user_id);
+        let is_first = !clients_lock.values().any(|e| e.user_id == user_id);
         clients_lock.insert(conn_id.clone(), ClientEntry { sender: tx, user_id });
-        first
-    };
 
-    // Broadcast online status only for the first connection
-    if is_first_connection {
-        let clients_lock = clients.lock().await;
-
-        // Tell this user who is already online
-        if let Some(my_entry) = clients_lock.get(&conn_id) {
-            let mut seen_users: HashSet<i64> = HashSet::new();
-            for (_cid, entry) in clients_lock.iter() {
-                if entry.user_id != user_id && seen_users.insert(entry.user_id) {
-                    let online_event = WsEvent {
-                        event_type: "online".to_string(),
-                        user_id: entry.user_id,
-                        receiver_id: None,
-                        group_id: None,
-                        content: None,
-                        data: None,
-                    };
-                    let _ = my_entry.sender.send(serde_json::to_string(&online_event).unwrap());
+        if is_first {
+            // Tell this user who is already online
+            if let Some(my_entry) = clients_lock.get(&conn_id) {
+                let mut seen: HashSet<i64> = HashSet::new();
+                for (_, entry) in clients_lock.iter() {
+                    if entry.user_id != user_id && seen.insert(entry.user_id) {
+                        let ev = WsEvent {
+                            event_type: "online".to_string(),
+                            user_id: entry.user_id,
+                            receiver_id: None, group_id: None, content: None, data: None,
+                        };
+                        let _ = my_entry.sender.send(serde_json::to_string(&ev).unwrap());
+                    }
                 }
             }
-        }
-
-        // Tell other users this user is now online
-        let online_event = WsEvent {
-            event_type: "online".to_string(),
-            user_id,
-            receiver_id: None,
-            group_id: None,
-            content: None,
-            data: None,
-        };
-        let online_str = serde_json::to_string(&online_event).unwrap();
-        for (cid, entry) in clients_lock.iter() {
-            if *cid != conn_id && entry.user_id != user_id {
-                let _ = entry.sender.send(online_str.clone());
+            // Tell others this user is online
+            let online_str = serde_json::to_string(&WsEvent {
+                event_type: "online".to_string(),
+                user_id, receiver_id: None, group_id: None, content: None, data: None,
+            }).unwrap();
+            for (cid, entry) in clients_lock.iter() {
+                if *cid != conn_id && entry.user_id != user_id {
+                    let _ = entry.sender.send(online_str.clone());
+                }
             }
         }
     }
@@ -127,7 +114,6 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
                                                     content, "text",
                                                 ).await;
                                             }
-
                                             let clients_lock = clients.lock().await;
                                             if let Some(receiver_id) = event.receiver_id {
                                                 let ev_str = serde_json::to_string(&event).unwrap();
@@ -196,28 +182,21 @@ async fn handle_socket(ws: WebSocket, user_id: i64, clients: Clients, db: Databa
         }
     }
 
-    // Unregister this connection and check if it's the last for this user
-    let is_last_connection = {
+    // Unregister and broadcast offline — all under one lock
+    {
         let mut clients_lock = clients.lock().await;
         clients_lock.remove(&conn_id);
-        !clients_lock.values().any(|e| e.user_id == user_id)
-    };
+        let is_last = !clients_lock.values().any(|e| e.user_id == user_id);
 
-    // Broadcast offline status only for the last connection
-    if is_last_connection {
-        let clients_lock = clients.lock().await;
-        let offline_event = WsEvent {
-            event_type: "offline".to_string(),
-            user_id,
-            receiver_id: None,
-            group_id: None,
-            content: None,
-            data: None,
-        };
-        let offline_str = serde_json::to_string(&offline_event).unwrap();
-        for (_, entry) in clients_lock.iter() {
-            if entry.user_id != user_id {
-                let _ = entry.sender.send(offline_str.clone());
+        if is_last {
+            let offline_str = serde_json::to_string(&WsEvent {
+                event_type: "offline".to_string(),
+                user_id, receiver_id: None, group_id: None, content: None, data: None,
+            }).unwrap();
+            for (_, entry) in clients_lock.iter() {
+                if entry.user_id != user_id {
+                    let _ = entry.sender.send(offline_str.clone());
+                }
             }
         }
     }
